@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "schema": "scenes.v1",
+    "fps": 30,
+    "source": "davinci/edl"
+  },
+  "media": {
+    "primary_clip_path": "D:/Footage/input.mp4"
+  },
+  "scenes": [
+    {
+      "scene_id": "S0001",
+      "start_frame": 0,
+      "end_frame": 120,
+      "start_tc": "00:00:00:00",
+      "end_tc": "00:00:04:00"
+    },
+    {
+      "scene_id": "S0002",
+      "start_frame": 120,
+      "end_frame": 240,
+      "start_tc": "00:00:04:00",
+      "end_tc": "00:00:08:00"
+    },
+    {
+      "scene_id": "S0003",
+      "start_frame": 240,
+      "end_frame": 360,
+      "start_tc": "00:00:08:00",
+      "end_tc": "00:00:12:00"
+    }
+  ]
+}

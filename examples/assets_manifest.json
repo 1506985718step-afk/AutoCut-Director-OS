@@ -1,0 +1,80 @@
+{
+  "manifest_version": "1.0",
+  "project_name": "我的零散镜头项目",
+  "created_at": "2026-02-05T14:00:00Z",
+  "assets": [
+    {
+      "asset_id": "asset_001",
+      "path": "C:/Videos/clips/intro.mp4",
+      "type": "video",
+      "duration_seconds": 5.2,
+      "duration_frames": 156,
+      "fps": 30,
+      "resolution": "1920x1080",
+      "metadata": {
+        "description": "开场镜头",
+        "tags": ["intro", "hook"],
+        "quality": "high"
+      }
+    },
+    {
+      "asset_id": "asset_002",
+      "path": "C:/Videos/clips/main_content_01.mp4",
+      "type": "video",
+      "duration_seconds": 12.5,
+      "duration_frames": 375,
+      "fps": 30,
+      "resolution": "1920x1080",
+      "metadata": {
+        "description": "主要内容片段1",
+        "tags": ["main", "teaching"],
+        "quality": "high"
+      }
+    },
+    {
+      "asset_id": "asset_003",
+      "path": "C:/Videos/clips/main_content_02.mp4",
+      "type": "video",
+      "duration_seconds": 8.3,
+      "duration_frames": 249,
+      "fps": 30,
+      "resolution": "1920x1080",
+      "metadata": {
+        "description": "主要内容片段2",
+        "tags": ["main", "demo"],
+        "quality": "high"
+      }
+    },
+    {
+      "asset_id": "asset_004",
+      "path": "C:/Videos/clips/transition.mp4",
+      "type": "video",
+      "duration_seconds": 2.0,
+      "duration_frames": 60,
+      "fps": 30,
+      "resolution": "1920x1080",
+      "metadata": {
+        "description": "转场镜头",
+        "tags": ["transition"],
+        "quality": "medium"
+      }
+    },
+    {
+      "asset_id": "asset_005",
+      "path": "C:/Videos/clips/outro.mp4",
+      "type": "video",
+      "duration_seconds": 4.0,
+      "duration_frames": 120,
+      "fps": 30,
+      "resolution": "1920x1080",
+      "metadata": {
+        "description": "结尾镜头",
+        "tags": ["outro", "cta"],
+        "quality": "high"
+      }
+    }
+  ],
+  "total_assets": 5,
+  "total_duration_seconds": 32.0,
+  "notes": "这是一个示例素材清单，包含5个视频片段"
+}

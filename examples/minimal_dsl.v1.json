@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "schema": "editing_dsl.v1",
+    "target": "youtube",
+    "aspect": "16:9"
+  },
+  "editing_plan": {
+    "timeline": [
+      {
+        "order": 1,
+        "scene_id": "S0001",
+        "trim_frames": [0, 90],
+        "purpose": "hook"
+      },
+      {
+        "order": 2,
+        "scene_id": "S0002",
+        "trim_frames": [120, 210],
+        "purpose": "content"
+      },
+      {
+        "order": 3,
+        "scene_id": "S0003",
+        "trim_frames": [240, 330],
+        "purpose": "cta"
+      }
+    ],
+    "subtitles": {
+      "mode": "from_transcript",
+      "style": "clean_white"
+    },
+    "music": {
+      "track_path": "",
+      "volume_db": -18
+    }
+  },
+  "export": {
+    "resolution": "1920x1080",
+    "format": "mp4"
+  }
+}

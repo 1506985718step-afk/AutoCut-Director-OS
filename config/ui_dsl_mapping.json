@@ -1,0 +1,128 @@
+{
+  "platform_mapping": {
+    "douyin": {
+      "target_platform": "douyin",
+      "aspect_ratio": "9:16",
+      "resolution": "1080x1920",
+      "max_duration": 60
+    },
+    "kuaishou": {
+      "target_platform": "kuaishou",
+      "aspect_ratio": "9:16",
+      "resolution": "1080x1920",
+      "max_duration": 60
+    },
+    "bilibili": {
+      "target_platform": "bilibili",
+      "aspect_ratio": "16:9",
+      "resolution": "1920x1080",
+      "max_duration": 600
+    },
+    "youtube": {
+      "target_platform": "youtube",
+      "aspect_ratio": "16:9",
+      "resolution": "1920x1080",
+      "max_duration": 900
+    }
+  },
+  
+  "style_prompts": {
+    "teaching": "B站教学风格：节奏适中、字幕完整、强调知识点、保留完整讲解内容、适当添加图表和示例",
+    "emotional": "情感风格：温暖感人、保留情感瞬间、适度剪辑、强调情绪共鸣、保持自然的节奏和情感",
+    "viral": "抖音爆款风格：节奏快、文字多、强调关键词、开头3秒Hook、删除所有废话和停顿、每3-5秒切换画面或文字",
+    "vlog": "Vlog风格：自然真实、保留有趣瞬间、流畅叙事、适当添加转场和音乐、保持轻松的氛围"
+  },
+  
+  "pace_mapping": {
+    "slow": {
+      "dsl_value": "slow",
+      "llm_prompt": "保留完整内容，只删除明显的废话和长停顿（超过2秒）。保持自然的讲话节奏。",
+      "trim_aggressiveness": 0.3
+    },
+    "medium": {
+      "dsl_value": "medium",
+      "llm_prompt": "删除停顿和重复，保持流畅。删除超过1秒的停顿和明显的口误。",
+      "trim_aggressiveness": 0.6
+    },
+    "fast": {
+      "dsl_value": "fast",
+      "llm_prompt": "激进剪辑，只保留核心内容，每3-5秒切换画面。删除所有停顿、口误、重复内容。",
+      "trim_aggressiveness": 0.9
+    }
+  },
+  
+  "subtitle_density_mapping": {
+    "minimal": {
+      "dsl_value": "minimal",
+      "style": "minimal",
+      "highlight_keywords": false,
+      "overlay_text": false
+    },
+    "standard": {
+      "dsl_value": "standard",
+      "style": "standard",
+      "highlight_keywords": true,
+      "overlay_text": false
+    },
+    "dense": {
+      "dsl_value": "dense",
+      "style": "dense",
+      "highlight_keywords": true,
+      "overlay_text": true
+    }
+  },
+  
+  "music_preference_mapping": {
+    "none": {
+      "enabled": false,
+      "mood": null
+    },
+    "emotional": {
+      "enabled": true,
+      "mood": "emotional",
+      "energy": "medium"
+    },
+    "suspense": {
+      "enabled": true,
+      "mood": "suspense",
+      "energy": "medium"
+    },
+    "upbeat": {
+      "enabled": true,
+      "mood": "fast",
+      "energy": "high"
+    },
+    "calm": {
+      "enabled": true,
+      "mood": "calm",
+      "energy": "low"
+    }
+  },
+  
+  "adjustment_prompts": {
+    "pace_faster": "用户反馈：节奏太慢，请加快剪辑节奏，更激进地删除停顿和重复内容。每个场景保持3-5秒。",
+    "pace_slower": "用户反馈：节奏太快，请放慢节奏，保留更多内容和自然停顿。让观众有时间理解内容。",
+    "hook_stronger": "用户反馈：开头Hook不够强，请选择最有冲击力、最吸引人的场景作为开头。可以使用数字、对比、悬念等手法。",
+    "hook_softer": "用户反馈：开头太强烈，请选择更自然温和的场景作为开头。不要太刺激，保持平和的开场。",
+    "music_change": "用户想换一首背景音乐，请从BGM库中选择同类型的下一首音乐。",
+    "music_remove": "用户不想要背景音乐，请移除所有音乐。",
+    "subtitle_more": "用户想要更多字幕，请增加字幕密度，添加更多文字叠加和关键词高亮。",
+    "subtitle_less": "用户想要更少字幕，请减少字幕密度，只保留关键句子。"
+  },
+  
+  "version_metadata_template": {
+    "version": 0,
+    "parent_version": null,
+    "created_at": "",
+    "user_adjustments": {},
+    "summary": {
+      "hook": "",
+      "pace": "",
+      "music": "",
+      "duration": ""
+    },
+    "dsl_path": "",
+    "preview_path": "",
+    "output_path": ""
+  }
+}

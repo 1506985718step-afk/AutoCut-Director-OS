@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoCut Director - 一键 AI 剪辑</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 头部 -->
+        <header class="app-header">
+            <h1>🎬 AutoCut Director</h1>
+            <p>AI 一键剪辑，3 分钟出片</p>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main" id="appMain">
+            <!-- 步骤 1: 上传配置 -->
+            <section class="step-section" id="step1" style="display: block;">
+                <div class="step-card">
+                    <h2>📤 选择工作流</h2>
+                    
+                    <!-- 工作流选择 -->
+                    <div class="workflow-selector">
+                        <label class="workflow-option">
+                            <input type="radio" name="workflow" value="single_video" checked onchange="switchWorkflow('single_video')">
+                            <div class="workflow-card">
+                                <div class="workflow-icon">🎬</div>
+                                <div class="workflow-name">单视频剪辑</div>
+                                <div class="workflow-desc">上传或选择一个完整视频进行智能剪辑</div>
+                            </div>
+                        </label>
+                        <label class="workflow-option">
+                            <input type="radio" name="workflow" value="script_assembly" onchange="switchWorkflow('script_assembly')">
+                            <div class="workflow-card">
+                                <div class="workflow-icon">🎞️</div>
+                                <div class="workflow-name">零散镜头组装</div>
+                                <div class="workflow-desc">从多个素材片段组装成完整视频</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- 单视频模式 -->
+                    <div id="singleVideoMode" style="display: block;">
+                        <h3>📹 视频来源</h3>
+                        
+                        <!-- 视频来源选择 -->
+                        <div class="source-selector">
+                            <label class="source-option">
+                                <input type="radio" name="videoSource" value="local" checked onchange="switchVideoSource('local')">
+                                <span>📁 本地文件（推荐）</span>
+                            </label>
+                            <label class="source-option">
+                                <input type="radio" name="videoSource" value="upload" onchange="switchVideoSource('upload')">
+                                <span>☁️ 上传文件（最大 2GB）</span>
+                            </label>
+                        </div>
+
+                        <!-- 本地文件选择 -->
+                        <div id="localFileMode" style="display: block;">
+                            <div class="local-file-input">
+                                <label>本地文件路径：</label>
+                                <input type="text" id="localFilePath" class="text-input" placeholder="例如: C:\Videos\my_video.mp4">
+                                <button class="btn-secondary" onclick="browseLocalFile()">浏览...</button>
+                            </div>
+                            <p class="hint-text">💡 提示：选择本地文件无需上传，处理更快</p>
+                        </div>
+
+                        <!-- 上传文件模式 -->
+                        <div id="uploadFileMode" style="display: none;">
+                            <div class="upload-zone" id="uploadZone">
+                                <div class="upload-icon">🎥</div>
+                                <p class="upload-text">拖拽视频到这里，或点击选择</p>
+                                <p class="upload-hint">支持 MP4, MOV, AVI（最大 2GB）</p>
+                                <input type="file" id="videoInput" accept="video/*" hidden>
+                            </div>
+
+                            <div class="file-selected" id="fileSelected" style="display: none;">
+                                <span class="file-name" id="fileName"></span>
+                                <button class="btn-remove" onclick="removeFile()">✕</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 零散镜头模式 -->
+                    <div id="scriptAssemblyMode" style="display: none;">
+                        <h3>🎞️ 素材清单</h3>
+                        
+                        <div class="manifest-input">
+                            <label>素材清单文件（assets_manifest.json）：</label>
+                            <input type="file" id="manifestInput" accept=".json" class="file-input">
+                            <p class="hint-text">📋 包含所有素材片段的路径和元数据</p>
+                        </div>
+
+                        <div class="script-input">
+                            <label>脚本大纲（可选，script_outline.json）：</label>
+                            <input type="file" id="scriptInput" accept=".json" class="file-input">
+                            <p class="hint-text">📝 指定素材的组装顺序和逻辑</p>
+                        </div>
+                    </div>
+
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label>🎯 目标平台</label>
+                            <select id="platform" class="select-input">
+                                <option value="douyin">抖音（竖屏 9:16）</option>
+                                <option value="bilibili">B站（横屏 16:9）</option>
+                                <option value="youtube">YouTube（横屏 16:9）</option>
+                                <option value="kuaishou">快手（竖屏 9:16）</option>
+                            </select>
+                        </div>
+
+                        <div class="config-item">
+                            <label>🎨 视频风格</label>
+                            <select id="style" class="select-input">
+                                <option value="viral">🔥 爆款风格（快节奏、强视觉）</option>
+                                <option value="teaching">📚 教学风格（清晰、完整）</option>
+                                <option value="emotional">💝 情感风格（温暖、感人）</option>
+                                <option value="vlog">📹 Vlog 风格（自然、真实）</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary btn-large" id="startBtn" onclick="startEditing()" disabled>
+                        ✨ 开始 AI 剪辑
+                    </button>
+                </div>
+            </section>
+
+            <!-- 步骤 2: 处理中 -->
+            <section class="step-section" id="step2" style="display: none;">
+                <div class="step-card">
+                    <h2>⚙️ 正在处理</h2>
+                    <p class="subtitle">AI 正在帮你剪辑，请稍候...</p>
+
+                    <div class="timeline">
+                        <div class="timeline-item completed" id="timeline1">
+                            <div class="timeline-icon">✓</div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">视频已导入</div>
+                                <div class="timeline-time">已完成</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item" id="timeline2">
+                            <div class="timeline-icon">▶</div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">音频分析中</div>
+                                <div class="timeline-time">进行中...</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item" id="timeline3">
+                            <div class="timeline-icon">○</div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">场景拆分</div>
+                                <div class="timeline-time">等待中</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item" id="timeline4">
+                            <div class="timeline-icon">○</div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">AI 生成剪辑方案</div>
+                                <div class="timeline-time">等待中</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item" id="timeline5">
+                            <div class="timeline-icon">○</div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">自动剪辑</div>
+                                <div class="timeline-time">等待中</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress-info">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progressBar"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span>已用时: <strong id="elapsedTime">0:00</strong></span>
+                            <span>预计剩余: <strong id="remainingTime">3:00</strong></span>
+                        </div>
+                    </div>
+
+                    <details class="log-details">
+                        <summary>🔍 查看详细日志（高级）</summary>
+                        <div class="log-content" id="logContent">
+                            <div class="log-entry">正在初始化...</div>
+                        </div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- 步骤 3: 预览修改 -->
+            <section class="step-section" id="step3" style="display: none;">
+                <div class="step-card">
+                    <h2>🎬 预览 & 修改</h2>
+                    <p class="subtitle">看看效果，不满意可以调整</p>
+
+                    <div class="preview-container">
+                        <video class="video-preview" id="videoPreview" controls>
+                            <source src="" type="video/mp4">
+                        </video>
+                    </div>
+
+                    <div class="summary-card">
+                        <h3>🧠 剪辑方案摘要</h3>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <span class="summary-label">开头 Hook</span>
+                                <span class="summary-value" id="summaryHook">-</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">节奏</span>
+                                <span class="summary-value" id="summaryPace">-</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">BGM</span>
+                                <span class="summary-value" id="summaryBGM">-</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">总时长</span>
+                                <span class="summary-value" id="summaryDuration">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="adjust-card">
+                        <h3>✏️ 调整选项</h3>
+                        <div class="adjust-grid">
+                            <button class="adjust-btn" onclick="adjustIntent('hook', 'stronger', event)">
+                                🔥 Hook 更狠
+                            </button>
+                            <button class="adjust-btn" onclick="adjustIntent('hook', 'softer', event)">
+                                💝 Hook 更温和
+                            </button>
+                            <button class="adjust-btn" onclick="adjustIntent('pace', 'faster', event)">
+                                ⚡ 节奏更快
+                            </button>
+                            <button class="adjust-btn" onclick="adjustIntent('pace', 'slower', event)">
+                                🐢 节奏更慢
+                            </button>
+                            <button class="adjust-btn" onclick="adjustIntent('bgm', 'change', event)">
+                                🎵 换一首音乐
+                            </button>
+                            <button class="adjust-btn" onclick="adjustIntent('subtitle', 'larger', event)">
+                                📝 字幕更大
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn-secondary" onclick="goBack()">
+                            ← 重新开始
+                        </button>
+                        <button class="btn-primary" onclick="confirmAndExport()">
+                            ✓ 满意，导出成片
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 步骤 4: 导出管理 -->
+            <section class="step-section" id="step4" style="display: none;">
+                <div class="step-card">
+                    <h2>📦 导出 & 管理</h2>
+                    
+                    <div class="export-options">
+                        <h3>选择导出质量</h3>
+                        <div class="quality-grid">
+                            <button class="quality-btn" onclick="exportVideo('1080p')">
+                                <div class="quality-icon">📱</div>
+                                <div class="quality-name">1080p</div>
+                                <div class="quality-desc">1080×1920 (抖音/快手)</div>
+                            </button>
+                            <button class="quality-btn" onclick="exportVideo('4k')">
+                                <div class="quality-icon">🖥️</div>
+                                <div class="quality-name">4K</div>
+                                <div class="quality-desc">3840×2160 (高清)</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="download-card" id="downloadCard" style="display: none;">
+                        <h3>✅ 导出完成</h3>
+                        <button class="btn-download" onclick="downloadVideo()">
+                            💾 下载成片
+                        </button>
+                    </div>
+
+                    <div class="history-card">
+                        <h3>📚 历史版本</h3>
+                        <div class="history-list" id="historyList">
+                            <div class="history-item">
+                                <span class="history-name">V1 - 初始版本</span>
+                                <span class="history-time">刚刚</span>
+                                <button class="btn-small" onclick="loadVersion(1)">查看</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn-secondary" onclick="deleteProject()">
+                            🗑️ 删除项目
+                        </button>
+                        <button class="btn-primary" onclick="createNew()">
+                            ➕ 创建新项目
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

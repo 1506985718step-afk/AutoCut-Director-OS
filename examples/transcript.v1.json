@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "schema": "transcript.v1",
+    "language": "zh"
+  },
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.8,
+      "text": "90%的人第一步就弹错了"
+    },
+    {
+      "start": 3.0,
+      "end": 6.5,
+      "text": "今天教你正确的方法"
+    },
+    {
+      "start": 7.0,
+      "end": 11.2,
+      "text": "记得点赞关注"
+    }
+  ]
+}

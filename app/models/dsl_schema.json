@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AutoCut Editing DSL v1",
+  "type": "object",
+  "required": ["meta", "editing_plan"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema", "target"],
+      "properties": {
+        "schema": {
+          "const": "editing_dsl.v1"
+        },
+        "target": {
+          "type": "string",
+          "enum": ["douyin", "bilibili", "youtube", "kuaishou", "custom"],
+          "description": "目标平台"
+        },
+        "aspect": {
+          "type": "string",
+          "enum": ["9:16", "16:9", "1:1"],
+          "description": "视频比例"
+        }
+      }
+    },
+    "editing_plan": {
+      "type": "object",
+      "required": ["timeline", "subtitles"],
+      "properties": {
+        "timeline": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["order", "scene_id", "trim_frames"],
+            "properties": {
+              "order": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "片段顺序"
+              },
+              "scene_id": {
+                "type": "string",
+                "pattern": "^S[0-9]{4}$",
+                "description": "场景 ID（格式：S0001）"
+              },
+              "trim_frames": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "裁剪帧范围 [in_frame, out_frame]"
+              },
+              "purpose": {
+                "type": "string",
+                "enum": ["hook", "content", "body", "cta"],
+                "description": "片段用途"
+              },
+              "overlay_text": {
+                "type": "string",
+                "maxLength": 10,
+                "description": "文字叠加（5-8 字）"
+              },
+              "broll": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "description": "B-roll 素材列表（铁律 1：无素材库时必须为空）"
+              }
+            }
+          }
+        },
+        "subtitles": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["from_transcript", "none", "custom"],
+              "default": "from_transcript",
+              "description": "字幕模式"
+            },
+            "style": {
+              "type": "string",
+              "enum": ["bold_yellow", "clean_white", "elegant_black"],
+              "default": "bold_yellow",
+              "description": "字幕样式"
+            }
+          }
+        },
+        "music": {
+          "type": "object",
+          "properties": {
+            "track_path": {
+              "type": "string",
+              "description": "背景音乐路径"
+            },
+            "volume_db": {
+              "type": "number",
+              "minimum": -60,
+              "maximum": 0,
+              "default": -18,
+              "description": "音量（dB）"
+            }
+          }
+        }
+      }
+    },
+    "export": {
+      "type": "object",
+      "properties": {
+        "resolution": {
+          "type": "string",
+          "pattern": "^[0-9]+x[0-9]+$",
+          "description": "分辨率（如：1080x1920）"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["mp4", "mov", "avi"],
+          "default": "mp4",
+          "description": "导出格式"
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "假设和建议（用于降级策略）"
+    }
+  }
+}
