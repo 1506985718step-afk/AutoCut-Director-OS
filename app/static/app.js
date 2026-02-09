@@ -20,18 +20,18 @@ document.addEventListener('DOMContentLoaded', () => {
 function initUpload() {
     const uploadZone = document.getElementById('uploadZone');
     const videoInput = document.getElementById('videoInput');
-    
+
     uploadZone.onclick = () => videoInput.click();
-    
+
     uploadZone.ondragover = (e) => {
         e.preventDefault();
         uploadZone.style.background = '#e8ebff';
     };
-    
+
     uploadZone.ondragleave = () => {
         uploadZone.style.background = '#f8f9ff';
     };
-    
+
     uploadZone.ondrop = (e) => {
         e.preventDefault();
         uploadZone.style.background = '#f8f9ff';
@@ -39,7 +39,7 @@ function initUpload() {
             handleFileSelect(e.dataTransfer.files[0]);
         }
     };
-    
+
     videoInput.onchange = (e) => {
         if (e.target.files.length > 0) {
             handleFileSelect(e.target.files[0]);
@@ -67,14 +67,46 @@ function removeFile() {
 // 开始剪辑
 async function startEditing() {
     if (!selectedFile) return;
+
+    // 🔥 新增：在开始处理前检查达芬奇状态
+    addLog('检查 DaVinci Resolve 状态...');
     
+    try {
+        const statusResponse = await fetch('/api/resolve/status');
+        const status = await statusResponse.json();
+        
+        if (!status.connected) {
+            addLog(`❌ ${status.message}`, 'error');
+            
+            // 显示修复指导
+            if (status.error) {
+                addLog(`  详细错误: ${status.error}`, 'info');
+            }
+            
+            // 显示友好的错误提示
+            const errorDetails = status.error || status.message;
+            alert(`❌ DaVinci Resolve 连接失败\n\n${errorDetails}\n\n请确保：\n1. DaVinci Resolve 已启动\n2. 已创建或打开一个项目\n3. 在偏好设置中启用了外部脚本\n\n完成后请重新点击开始处理。`);
+            return;
+        }
+        
+        addLog('✅ DaVinci Resolve 状态正常');
+        
+    } catch (error) {
+        addLog(`⚠️ 无法检查达芬奇状态: ${error.message}`, 'error');
+        
+        // 询问用户是否继续
+        if (!confirm('无法检查 DaVinci Resolve 状态，是否继续处理？\n\n建议先确保达芬奇已启动并打开项目。')) {
+            return;
+        }
+    }
+
     // 切换到处理步骤
     showStep(2);
     startTime = Date.now();
-    
+
     // 开始计时
     startTimer();
-    
+
     // 创建项目
     await createProject();
 }
@@ -82,9 +114,9 @@ async function startEditing() {
 // 创建项目（使用新的产品级 API）
 async function createProject() {
     addLog('开始创建项目...');
-    
+
     const formData = new FormData();
-    
+
     if (currentWorkflow === 'single_video') {
         // 单视频模式
         if (videoSource === 'local') {
@@ -101,66 +133,82 @@ async function createProject() {
             }
             formData.append('video', selectedFile);
         }
-        
+
         formData.append('platform', document.getElementById('platform').value);
         formData.append('style', document.getElementById('style').value);
         formData.append('pace', 'medium');
         formData.append('subtitle_density', 'standard');
         formData.append('music_preference', 'emotional');
-        
+
         try {
             const response = await fetch('/api/projects/create', {
                 method: 'POST',
                 body: formData
             });
-            
+
             const result = await response.json();
-            
+
             if (response.ok) {
                 currentJobId = result.project_id;
                 addLog(`项目创建成功 (ID: ${result.project_id})`);
-                
+
                 // 开始轮询进度
                 await pollProjectProgress();
             } else {
-                throw new Error(result.detail || '创建项目失败');
+                // 处理达芬奇未运行的特殊错误
+                if (response.status === 503 && result.detail && result.detail.error === "DaVinci Resolve 未运行") {
+                    addLog(`错误: ${result.detail.message}`, 'error');
+                    
+                    // 显示详细的修复指导
+                    const instructions = result.detail.instructions || [];
+                    instructions.forEach(instruction => {
+                        addLog(`  ${instruction}`, 'info');
+                    });
+                    
+                    updateTimeline(1, 'error', '达芬奇未运行');
+                    
+                    // 显示友好的错误提示
+                    alert(`❌ DaVinci Resolve 未运行\n\n请按以下步骤操作：\n${instructions.join('\n')}\n\n完成后请重新提交任务。`);
+                } else {
+                    throw new Error(result.detail || '创建项目失败');
+                }
             }
         } catch (error) {
             addLog(`错误: ${error.message}`, 'error');
             updateTimeline(1, 'error', '失败');
             alert('创建项目失败: ' + error.message);
         }
-        
+
     } else {
         // 零散镜头组装模式
         if (!manifestFile) {
             throw new Error('请选择素材清单文件');
         }
-        
+
         formData.append('assets_manifest', manifestFile);
-        
+
         if (scriptFile) {
             formData.append('script_outline', scriptFile);
         }
-        
+
         formData.append('platform', document.getElementById('platform').value);
         formData.append('style', document.getElementById('style').value);
         formData.append('pace', 'medium');
         formData.append('subtitle_density', 'standard');
         formData.append('music_preference', 'emotional');
-        
+
         try {
             const response = await fetch('/api/assembly/create', {
                 method: 'POST',
                 body: formData
             });
-            
+
             const result = await response.json();
-            
+
             if (response.ok) {
                 currentJobId = result.project_id;
                 addLog(`组装项目创建成功 (ID: ${result.project_id})`);
-                
+
                 // 开始轮询进度
                 await pollAssemblyProgress();
             } else {
@@ -180,21 +228,21 @@ async function pollAssemblyProgress() {
         try {
             const response = await fetch(`/api/assembly/${currentJobId}/status`);
             const status = await response.json();
-            
+
             // 更新进度
             updateProgress(status.progress);
-            
+
             // 更新日志
             if (status.current_step) {
                 addLog(`当前步骤: ${status.current_step}`);
             }
-            
+
             // 检查是否完成
             if (status.status === 'completed') {
                 clearInterval(pollInterval);
                 addLog('组装项目处理完成！');
                 stopTimer();
-                
+
                 // 切换到预览步骤
                 await sleep(1000);
                 await showPreview();
@@ -204,7 +252,7 @@ async function pollAssemblyProgress() {
                 stopTimer();
                 alert('处理失败，请重试');
             }
-            
+
         } catch (error) {
             addLog(`轮询错误: ${error.message}`, 'error');
         }
@@ -213,14 +261,16 @@ async function pollAssemblyProgress() {
 
 // 轮询项目进度
 async function pollProjectProgress() {
+    let resolveSceneDetectionCalled = false;  // 标记是否已调用 Resolve 场景检测
+
     const pollInterval = setInterval(async () => {
         try {
             const response = await fetch(`/api/projects/${currentJobId}/status`);
             const status = await response.json();
-            
+
             // 更新进度
             updateProgress(status.progress);
-            
+
             // 更新时间线
             if (status.steps) {
                 status.steps.forEach((step, index) => {
@@ -232,18 +282,22 @@ async function pollProjectProgress() {
                     }
                 });
             }
-            
+
             // 更新日志
             if (status.current_step) {
                 addLog(`当前步骤: ${status.current_step}`);
             }
-            
+
+            // 这里的旧逻辑已移除，现在由后端 WorkflowOrchestrator 自动处理
+
+
+
             // 检查是否完成
             if (status.status === 'completed') {
                 clearInterval(pollInterval);
                 addLog('项目处理完成！');
                 stopTimer();
-                
+
                 // 切换到预览步骤
                 await sleep(1000);
                 await showPreview();
@@ -253,7 +307,7 @@ async function pollProjectProgress() {
                 stopTimer();
                 alert('处理失败，请重试');
             }
-            
+
         } catch (error) {
             addLog(`轮询错误: ${error.message}`, 'error');
         }
@@ -263,12 +317,12 @@ async function pollProjectProgress() {
 // 显示预览
 async function showPreview() {
     showStep(3);
-    
+
     // 获取项目详情
     try {
         const response = await fetch(`/api/projects/${currentJobId}`);
         const project = await response.json();
-        
+
         // 填充摘要信息
         if (project.summary) {
             document.getElementById('summaryHook').textContent = project.summary.hook || '未知';
@@ -282,11 +336,11 @@ async function showPreview() {
             document.getElementById('summaryBGM').textContent = '情绪型';
             document.getElementById('summaryDuration').textContent = '45 秒';
         }
-        
+
         // 设置预览视频
         const videoPreview = document.getElementById('videoPreview');
         videoPreview.src = project.preview_url || `/api/projects/${currentJobId}/preview`;
-        
+
         addLog('预览加载完成');
     } catch (error) {
         addLog(`预览加载失败: ${error.message}`, 'error');
@@ -301,13 +355,13 @@ async function showPreview() {
 // 调整意图
 async function adjustIntent(intentType, action, event) {
     addLog(`用户调整: ${intentType} - ${action}`);
-    
+
     // 显示处理中
     const btn = event.target;
     const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = '处理中...';
-    
+
     try {
         // 构建调整对象
         const adjustments = {
@@ -316,38 +370,38 @@ async function adjustIntent(intentType, action, event) {
             music: 'keep',
             subtitle: 'keep'
         };
-        
+
         // 设置当前调整
         adjustments[intentType] = action;
-        
+
         // 调用调整 API
         const response = await fetch(`/api/projects/${currentJobId}/adjust`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({adjustments})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adjustments })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             addLog(`正在重新生成（版本 ${result.new_version}）...`);
             btn.textContent = '重新生成中...';
-            
+
             // 轮询新版本进度
             await pollAdjustmentProgress(result.new_version);
-            
+
             btn.disabled = false;
             btn.textContent = '✓ 已应用';
-            
+
             // 3秒后恢复按钮文本
             setTimeout(() => {
                 btn.textContent = originalText;
             }, 3000);
-            
+
         } else {
             throw new Error(result.detail || '调整失败');
         }
-        
+
     } catch (error) {
         addLog(`调整失败: ${error.message}`, 'error');
         btn.disabled = false;
@@ -364,25 +418,25 @@ async function pollAdjustmentProgress(version) {
                 const versionProjectId = `${currentJobId}_v${version}`;
                 const response = await fetch(`/api/projects/${versionProjectId}/status`);
                 const status = await response.json();
-                
+
                 addLog(`调整进度: ${status.progress}%`);
-                
+
                 if (status.status === 'completed') {
                     clearInterval(pollInterval);
                     addLog('调整完成，刷新预览...');
-                    
+
                     // 更新当前项目 ID 为新版本
                     currentJobId = versionProjectId;
-                    
+
                     // 刷新预览
                     await showPreview();
-                    
+
                     resolve();
                 } else if (status.status === 'error') {
                     clearInterval(pollInterval);
                     reject(new Error(status.error || '调整失败'));
                 }
-                
+
             } catch (error) {
                 clearInterval(pollInterval);
                 reject(error);
@@ -399,36 +453,36 @@ function confirmAndExport() {
 // 导出视频
 async function exportVideo(quality) {
     addLog(`开始导出: ${quality}`);
-    
+
     try {
         // 创建导出任务
         const response = await fetch('/api/exports/', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 project_id: currentJobId.replace(/_v\d+$/, ''),  // 移除版本后缀
                 quality: quality
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             const exportId = result.export_id;
             addLog(`导出任务创建成功 (ID: ${exportId})`);
-            
+
             // 轮询导出进度
             await pollExportProgress(exportId);
-            
+
             // 显示下载按钮
             document.getElementById('downloadCard').style.display = 'block';
             document.getElementById('downloadCard').dataset.exportId = exportId;
-            
+
             addLog('导出完成！');
         } else {
             throw new Error(result.detail || '创建导出任务失败');
         }
-        
+
     } catch (error) {
         addLog(`导出失败: ${error.message}`, 'error');
         alert('导出失败: ' + error.message);
@@ -442,9 +496,9 @@ async function pollExportProgress(exportId) {
             try {
                 const response = await fetch(`/api/exports/${exportId}/status`);
                 const status = await response.json();
-                
+
                 addLog(`导出进度: ${status.progress}%`);
-                
+
                 if (status.status === 'completed') {
                     clearInterval(pollInterval);
                     resolve();
@@ -452,7 +506,7 @@ async function pollExportProgress(exportId) {
                     clearInterval(pollInterval);
                     reject(new Error(status.error || '导出失败'));
                 }
-                
+
             } catch (error) {
                 clearInterval(pollInterval);
                 reject(error);
@@ -468,7 +522,7 @@ function downloadVideo() {
         alert('导出 ID 不存在');
         return;
     }
-    
+
     // 直接打开下载链接
     window.location.href = `/api/exports/${exportId}/download`;
     addLog('开始下载成片...');
@@ -510,8 +564,15 @@ function showStep(step) {
 
 function updateTimeline(index, status, time) {
     const item = document.getElementById(`timeline${index}`);
+    if (!item) {
+        console.warn(`Timeline element timeline${index} not found`);
+        return;
+    }
     item.className = `timeline-item ${status}`;
-    item.querySelector('.timeline-time').textContent = time;
+    const timeElement = item.querySelector('.timeline-time');
+    if (timeElement) {
+        timeElement.textContent = time;
+    }
 }
 
 function updateProgress(percent) {
@@ -532,14 +593,14 @@ function startTimer() {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
-        document.getElementById('elapsedTime').textContent = 
+        document.getElementById('elapsedTime').textContent =
             `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        
+
         // 更新预计剩余时间
         const remaining = Math.max(0, 180 - elapsed);
         const remMin = Math.floor(remaining / 60);
         const remSec = remaining % 60;
-        document.getElementById('remainingTime').textContent = 
+        document.getElementById('remainingTime').textContent =
             `${remMin}:${remSec.toString().padStart(2, '0')}`;
     }, 1000);
 }
@@ -561,18 +622,18 @@ function sleep(ms) {
 function showLoading(message = '处理中...') {
     // 移除已存在的加载动画
     hideLoading();
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'loading-overlay';
     overlay.id = 'loadingOverlay';
-    
+
     overlay.innerHTML = `
         <div class="loading-content">
             <div class="loading-spinner"></div>
             <p>${message}</p>
         </div>
     `;
-    
+
     document.body.appendChild(overlay);
 }
 
@@ -589,12 +650,12 @@ function showError(message) {
     const errorDiv = document.createElement('div');
     errorDiv.className = 'error-message';
     errorDiv.textContent = message;
-    
+
     // 插入到当前步骤的顶部
     const currentStep = document.getElementById(`step${currentStep}`);
     if (currentStep) {
         currentStep.insertBefore(errorDiv, currentStep.firstChild);
-        
+
         // 3秒后自动移除
         setTimeout(() => {
             errorDiv.remove();
@@ -607,12 +668,12 @@ function showSuccess(message) {
     const successDiv = document.createElement('div');
     successDiv.className = 'success-message';
     successDiv.textContent = message;
-    
+
     // 插入到当前步骤的顶部
     const currentStepEl = document.getElementById(`step${currentStep}`);
     if (currentStepEl) {
         currentStepEl.insertBefore(successDiv, currentStepEl.firstChild);
-        
+
         // 3秒后自动移除
         setTimeout(() => {
             successDiv.remove();
@@ -635,13 +696,13 @@ async function withErrorHandling(fn, errorMessage = '操作失败') {
 // 重试机制
 async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
     let lastError;
-    
+
     for (let i = 0; i < maxRetries; i++) {
         try {
             return await fn();
         } catch (error) {
             lastError = error;
-            
+
             if (i < maxRetries - 1) {
                 const delay = initialDelay * Math.pow(2, i);
                 addLog(`重试 ${i + 1}/${maxRetries}，等待 ${delay}ms...`);
@@ -649,7 +710,7 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
             }
         }
     }
-    
+
     throw lastError;
 }
 
@@ -657,22 +718,22 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
 async function fetchWithTimeout(url, options = {}, timeout = 30000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
+
     try {
         const response = await fetch(url, {
             ...options,
             signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
         return response;
     } catch (error) {
         clearTimeout(timeoutId);
-        
+
         if (error.name === 'AbortError') {
             throw new Error('请求超时，请检查网络连接');
         }
-        
+
         throw error;
     }
 }
@@ -684,24 +745,24 @@ function validateFile(file) {
     if (!validTypes.includes(file.type)) {
         throw new Error('不支持的文件格式，请上传 MP4、MOV 或 AVI 格式');
     }
-    
+
     // 检查文件大小（2GB）
     const maxSize = 2 * 1024 * 1024 * 1024;
     if (file.size > maxSize) {
         throw new Error('文件太大，最大支持 2GB');
     }
-    
+
     return true;
 }
 
 // 格式化文件大小
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
-    
+
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
@@ -717,19 +778,19 @@ function handleFileSelect(file) {
     try {
         // 验证文件
         validateFile(file);
-        
+
         selectedFile = file;
-        
+
         // 更新显示
         const fileName = document.getElementById('fileName');
         fileName.textContent = `${file.name} (${formatFileSize(file.size)})`;
-        
+
         document.getElementById('fileSelected').style.display = 'flex';
         document.getElementById('uploadZone').style.display = 'none';
         document.getElementById('startBtn').disabled = false;
-        
+
         addLog(`文件已选择: ${file.name}`);
-        
+
     } catch (error) {
         showError(error.message);
         selectedFile = null;
@@ -742,7 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!window.fetch) {
         showError('您的浏览器不支持，请使用 Chrome、Edge 或 Firefox 最新版本');
     }
-    
+
     // 检查服务器连接
     checkServerConnection();
 });
@@ -776,7 +837,7 @@ function initWorkflowSwitch() {
             }
         };
     }
-    
+
     // 监听脚本文件选择
     const scriptInput = document.getElementById('scriptInput');
     if (scriptInput) {
@@ -792,10 +853,10 @@ function initWorkflowSwitch() {
 // 切换工作流
 function switchWorkflow(workflow) {
     currentWorkflow = workflow;
-    
+
     const singleVideoMode = document.getElementById('singleVideoMode');
     const scriptAssemblyMode = document.getElementById('scriptAssemblyMode');
-    
+
     if (workflow === 'single_video') {
         singleVideoMode.style.display = 'block';
         scriptAssemblyMode.style.display = 'none';
@@ -805,7 +866,7 @@ function switchWorkflow(workflow) {
         scriptAssemblyMode.style.display = 'block';
         addLog('切换到零散镜头组装模式');
     }
-    
+
     // 检查是否可以开始
     checkCanStart();
 }
@@ -813,10 +874,10 @@ function switchWorkflow(workflow) {
 // 切换视频来源
 function switchVideoSource(source) {
     videoSource = source;
-    
+
     const localFileMode = document.getElementById('localFileMode');
     const uploadFileMode = document.getElementById('uploadFileMode');
-    
+
     if (source === 'local') {
         localFileMode.style.display = 'block';
         uploadFileMode.style.display = 'none';
@@ -826,7 +887,7 @@ function switchVideoSource(source) {
         uploadFileMode.style.display = 'block';
         addLog('切换到上传文件模式');
     }
-    
+
     // 检查是否可以开始
     checkCanStart();
 }
@@ -837,7 +898,7 @@ function browseLocalFile() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'video/*';
-    
+
     input.onchange = (e) => {
         if (e.target.files.length > 0) {
             const file = e.target.files[0];
@@ -845,22 +906,22 @@ function browseLocalFile() {
             // 但浏览器不允许直接获取完整路径，所以我们使用文件名
             document.getElementById('localFilePath').value = file.name;
             localFilePath = file.name;
-            
+
             // 实际上我们仍然需要文件对象用于后续处理
             selectedFile = file;
-            
+
             addLog(`本地文件已选择: ${file.name}`);
             checkCanStart();
         }
     };
-    
+
     input.click();
 }
 
 // 检查是否可以开始
 function checkCanStart() {
     const startBtn = document.getElementById('startBtn');
-    
+
     if (currentWorkflow === 'single_video') {
         // 单视频模式
         if (videoSource === 'local') {
@@ -873,5 +934,111 @@ function checkCanStart() {
     } else {
         // 零散镜头模式：需要素材清单
         startBtn.disabled = !manifestFile;
+    }
+}
+// ============ 达芬奇状态检查 ============
+
+// 检查达芬奇状态
+async function checkResolveStatus() {
+    const statusCard = document.getElementById('resolveStatusCard');
+    const statusIcon = document.getElementById('resolveStatusIcon');
+    const statusText = document.getElementById('resolveStatusText');
+    const statusDetails = document.getElementById('resolveStatusDetails');
+    const instructions = document.getElementById('resolveInstructions');
+    const recheckBtn = document.getElementById('recheckResolveBtn');
+    
+    // 显示检查中状态
+    statusCard.style.display = 'block';
+    statusCard.className = 'resolve-status-card status-checking';
+    statusIcon.textContent = '🔄';
+    statusText.textContent = '正在检查 DaVinci Resolve 状态...';
+    statusDetails.style.display = 'none';
+    recheckBtn.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/projects/resolve/status');
+        const status = await response.json();
+        
+        if (status.running && status.connected) {
+            // 状态正常
+            statusCard.className = 'resolve-status-card status-success';
+            statusIcon.textContent = '✅';
+            statusText.textContent = 'DaVinci Resolve 已就绪';
+            statusDetails.style.display = 'none';
+            recheckBtn.style.display = 'none';
+            
+            // 隐藏状态卡片（3秒后）
+            setTimeout(() => {
+                statusCard.style.display = 'none';
+            }, 3000);
+            
+            return true;
+            
+        } else {
+            // 状态异常
+            statusCard.className = 'resolve-status-card status-error';
+            statusIcon.textContent = '❌';
+            statusText.textContent = status.message || 'DaVinci Resolve 状态异常';
+            
+            // 显示修复指导
+            if (status.instructions && status.instructions.length > 0) {
+                statusDetails.style.display = 'block';
+                instructions.innerHTML = '';
+                status.instructions.forEach(instruction => {
+                    const li = document.createElement('li');
+                    li.textContent = instruction;
+                    instructions.appendChild(li);
+                });
+            }
+            
+            recheckBtn.style.display = 'inline-block';
+            return false;
+        }
+        
+    } catch (error) {
+        // 检查失败
+        statusCard.className = 'resolve-status-card status-warning';
+        statusIcon.textContent = '⚠️';
+        statusText.textContent = `状态检查失败: ${error.message}`;
+        statusDetails.style.display = 'none';
+        recheckBtn.style.display = 'inline-block';
+        
+        return false;
+    }
+}
+
+// 页面加载时自动检查达芬奇状态
+document.addEventListener('DOMContentLoaded', () => {
+    // 延迟2秒后自动检查，给服务器启动时间
+    setTimeout(() => {
+        checkResolveStatus();
+    }, 2000);
+});
+
+// 修改文件选择处理，选择文件后检查达芬奇状态
+function handleFileSelect(file) {
+    try {
+        // 验证文件
+        validateFile(file);
+
+        selectedFile = file;
+
+        // 更新显示
+        const fileName = document.getElementById('fileName');
+        fileName.textContent = `${file.name} (${formatFileSize(file.size)})`;
+
+        document.getElementById('fileSelected').style.display = 'flex';
+        document.getElementById('uploadZone').style.display = 'none';
+        
+        addLog(`文件已选择: ${file.name}`);
+        
+        // 🔥 选择文件后自动检查达芬奇状态
+        checkResolveStatus().then(isReady => {
+            document.getElementById('startBtn').disabled = !isReady;
+        });
+
+    } catch (error) {
+        showError(error.message);
+        selectedFile = null;
     }
 }

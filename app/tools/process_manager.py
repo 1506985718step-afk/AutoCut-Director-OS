@@ -1,15 +1,22 @@
 """
-OS 进程管理器 - 赋予 AI "生命权"
+OS 进程管理器 - 赋予 AI "生命权"（增强版）
 
 功能：
 1. 检测 DaVinci Resolve 是否运行
 2. 自动启动 Resolve
 3. 监控进程状态
 4. 优雅关闭进程
+
+增强功能：
+- 支持环境变量 RESOLVE_EXECUTABLE_PATH 自定义路径
+- 支持多盘符安装（C/D/E/F 盘）
+- 支持 Steam 版本路径
+- 更详细的路径查找日志
 """
 import psutil
 import subprocess
 import time
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 import platform
@@ -34,27 +41,61 @@ class ProcessManager:
             return "resolve"
     
     def _find_resolve_executable(self) -> Optional[Path]:
-        """查找 Resolve 可执行文件路径"""
+        """
+        查找 Resolve 可执行文件路径（增强版）
+        
+        查找顺序：
+        1. 环境变量 RESOLVE_EXECUTABLE_PATH
+        2. 常见安装路径（多盘符支持）
+        3. Steam 安装路径
+        """
+        # 1. 优先检查环境变量
+        custom_path = os.environ.get("RESOLVE_EXECUTABLE_PATH")
+        if custom_path:
+            path = Path(custom_path)
+            if path.exists():
+                print(f"✓ 使用自定义路径: {path}")
+                return path
+            else:
+                print(f"⚠️ 环境变量路径不存在: {custom_path}")
+        
+        # 2. 检查常见安装路径
         if self.system == "Windows":
-            # Windows 常见安装路径
-            possible_paths = [
-                Path("C:/Program Files/Blackmagic Design/DaVinci Resolve/Resolve.exe"),
-                Path("C:/Program Files (x86)/Blackmagic Design/DaVinci Resolve/Resolve.exe"),
-            ]
+            # Windows 常见安装路径（支持多盘符）
+            possible_paths = []
+            
+            # 遍历常见盘符 C, D, E, F
+            for drive in ['C', 'D', 'E', 'F']:
+                possible_paths.extend([
+                    Path(f"{drive}:/Program Files/Blackmagic Design/DaVinci Resolve/Resolve.exe"),
+                    Path(f"{drive}:/Program Files (x86)/Blackmagic Design/DaVinci Resolve/Resolve.exe"),
+                    # Steam 路径
+                    Path(f"{drive}:/Program Files (x86)/Steam/steamapps/common/DaVinci Resolve/Resolve.exe"),
+                    Path(f"{drive}:/Steam/steamapps/common/DaVinci Resolve/Resolve.exe"),
+                ])
+            
         elif self.system == "Darwin":  # macOS
             possible_paths = [
                 Path("/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/MacOS/Resolve"),
+                Path("/Applications/DaVinci Resolve Studio/DaVinci Resolve Studio.app/Contents/MacOS/Resolve"),
             ]
         else:  # Linux
             possible_paths = [
                 Path("/opt/resolve/bin/resolve"),
                 Path("/usr/local/bin/resolve"),
+                Path("~/resolve/bin/resolve").expanduser(),
             ]
         
+        # 查找第一个存在的路径
         for path in possible_paths:
             if path.exists():
+                print(f"✓ 找到 Resolve: {path}")
                 return path
         
+        # 未找到
+        print("❌ 未找到 DaVinci Resolve 可执行文件")
+        print("请设置环境变量 RESOLVE_EXECUTABLE_PATH 指向 Resolve.exe")
+        print("例如: set RESOLVE_EXECUTABLE_PATH=D:\\Program Files\\Blackmagic Design\\DaVinci Resolve\\Resolve.exe")
         return None
     
     def is_resolve_running(self) -> bool:

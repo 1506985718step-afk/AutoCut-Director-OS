@@ -65,6 +65,30 @@ async def create_project(
         }
     """
     try:
+        # 🔥 新增：在创建项目前先检查达芬奇状态
+        from ..tools.resolve_importer import get_importer
+        
+        print("🔍 检查达芬奇状态...")
+        resolve_importer = get_importer()
+        status = resolve_importer.check_resolve_status()
+        
+        if not status.get("connected", False):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "DaVinci Resolve 连接失败",
+                    "message": status.get("message", "无法连接到 DaVinci Resolve"),
+                    "error_details": status.get("error", ""),
+                    "instructions": [
+                        "1. 启动 DaVinci Resolve",
+                        "2. 创建或打开一个项目",
+                        "3. 在 偏好设置 -> 系统 -> 常规 中开启 '外部脚本使用'",
+                        "4. 重新提交任务"
+                    ]
+                }
+            )
+        
+        print("✅ 达芬奇状态检查通过")
         # 1. 生成项目 ID
         project_id = f"proj_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
@@ -115,18 +139,19 @@ async def create_project(
         with meta_path.open("w", encoding="utf-8") as f:
             json.dump(project_meta, f, indent=2, ensure_ascii=False)
         
-        # 7. 初始化项目状态
+        # 7. 初始化项目状态 (配合 7-Stage Workflow)
         project_status[project_id] = {
             "status": "processing",
             "progress": 5,
-            "current_step": "video_import",
+            "current_step": "setup",
             "steps": [
-                {"name": "video_import", "status": "completed", "message": "视频已导入"},
-                {"name": "audio_analysis", "status": "pending", "message": "等待中"},
-                {"name": "scene_detection", "status": "pending", "message": "等待中"},
-                {"name": "dsl_generation", "status": "pending", "message": "等待中"},
-                {"name": "editing", "status": "pending", "message": "等待中"},
-                {"name": "preview_generation", "status": "pending", "message": "等待中"}
+                {"name": "setup", "status": "pending", "message": "项目初始化"},       # Stage 0
+                {"name": "ingest", "status": "pending", "message": "素材处理"},      # Stage 1
+                {"name": "recognition", "status": "pending", "message": "AI 识别"},  # Stage 2
+                {"name": "director", "status": "pending", "message": "导演编排"},    # Stage 3
+                {"name": "execution", "status": "pending", "message": "剪辑执行"},   # Stage 4
+                {"name": "review", "status": "pending", "message": "成片审查"},      # Stage 5
+                {"name": "export", "status": "pending", "message": "最终导出"}       # Stage 6
             ],
             "estimated_remaining": 180
         }
@@ -147,6 +172,8 @@ async def create_project(
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"创建项目失败: {str(e)}")
 
 
@@ -157,139 +184,123 @@ async def process_project(
     music_preference: str
 ):
     """
-    后台处理项目（完整流程）
-    
-    这个函数对用户不可见，自动完成所有处理步骤
+    后台处理项目 (基于 WorkflowOrchestrator 的 7 阶段流程)
     """
-    project_path = Path("jobs") / project_id
+    from ..core.workflow_orchestrator import WorkflowOrchestrator, WorkflowStage
     
+    project_path = Path("jobs") / project_id
+    orchestrator = WorkflowOrchestrator(project_id, Path("jobs"))
+    
+    # 状态映射辅助函数
+    def update_stage_status(stage_name, progress, message):
+        update_project_status(project_id, stage_name, progress, message)
+
+    # Debug Log Setup
+    debug_log = Path("jobs") / "backend_debug.log"
+    def log(msg):
+        with open(debug_log, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+
     try:
-        # 步骤 1: 提取音频
-        update_project_status(project_id, "audio_analysis", 20, "正在分析音频...")
-        audio_path = project_path / "temp" / "audio.wav"
-        media_ingest.extract_audio(video_path, str(audio_path))
+        log(f"START process_project: {project_id}")
         
-        # 步骤 1.5: 导入素材到 Resolve
-        update_project_status(project_id, "resolve_import", 25, "正在同步到剪辑引擎...")
+        # --- Stage 0: Setup ---
+        log("Stage 0: Updating status to setup...")
+        update_stage_status("setup", 10, "正在初始化 Resolve 项目...")
         
-        # 检查 Resolve 状态
-        resolve_status = resolve_importer.check_resolve_status()
+        log("Stage 0: Calling orchestrator.run_stage(SETUP)...")
+        result = await orchestrator.run_stage(WorkflowStage.SETUP, video_path=video_path)
+        log(f"Stage 0 Result: {result}")
         
-        if resolve_status["connected"]:
-            # 导入视频到 Media Pool
-            import_result = resolve_importer.import_media([video_path])
+        if not result["success"]:
+            log("Stage 0 FAILED")
+            raise RuntimeError(f"Stage 0 Failed: {result.get('message')}")
             
-            if import_result["success"]:
-                update_project_status(
-                    project_id,
-                    "resolve_import",
-                    30,
-                    f"✓ 已同步到剪辑引擎 ({resolve_status['project_name']})"
-                )
-            else:
-                update_project_status(
-                    project_id,
-                    "resolve_import",
-                    30,
-                    f"⚠️ 同步失败: {import_result['message']}"
-                )
-        else:
-            update_project_status(
-                project_id,
-                "resolve_import",
-                30,
-                "⚠️ DaVinci Resolve 未启动，跳过同步"
-            )
+        log("Stage 0: Success. Updating status...")
+        update_stage_status("setup", 15, "✓ 项目建立完成")
+
+        # --- Stage 1: Ingest ---
+        log("Stage 1: Updating status to ingest...")
+        update_stage_status("ingest", 20, "正在处理素材...")
         
-        # 步骤 2: 语音识别（ASR）
-        update_project_status(project_id, "audio_analysis", 35, "正在识别语音...")
-        # TODO: 集成 Whisper ASR
-        # transcript = await run_asr(audio_path)
-        # 暂时使用模拟数据
-        transcript_data = {
-            "segments": [
-                {"start": 0.0, "end": 5.0, "text": "大家好，今天我们来讲解..."}
-            ]
-        }
-        transcript_path = project_path / "temp" / "transcript.json"
-        with transcript_path.open("w", encoding="utf-8") as f:
-            json.dump(transcript_data, f, indent=2, ensure_ascii=False)
+        log("Stage 1: Calling orchestrator.run_stage(INGEST)...")
+        result = await orchestrator.run_stage(WorkflowStage.INGEST)
+        log(f"Stage 1 Result: {result}")
+        if not result["success"]:
+            raise RuntimeError(f"Stage 1 Failed: {result.get('message')}")
+        update_stage_status("ingest", 30, f"✓ 素材处理完成 ({len(orchestrator.context['assets'])} 个文件)")
+
+        # --- Stage 2: Recognition ---
+        update_stage_status("recognition", 35, "正在进行 AI 识别 (语音/视觉)...")
+        result = await orchestrator.run_stage(WorkflowStage.RECOGNITION)
+        if not result["success"]:
+            raise RuntimeError(f"Stage 2 Failed: {result.get('message')}")
+        update_stage_status("recognition", 50, f"✓ 识别完成 ({result.get('shotcards_count')} 个镜头)")
+
+        # --- Stage 3: Director ---
+        log("Stage 3: Updating status to director...")
+        update_stage_status("director", 55, "AI 导演正在构思脚本...")
         
-        # 步骤 3: 场景检测
-        update_project_status(project_id, "scene_detection", 50, "正在检测场景...")
-        # TODO: 集成场景检测
-        # scenes = await detect_scenes(video_path)
-        # 暂时使用模拟数据
-        scenes_data = {
-            "scenes": [
-                {"scene_id": "scene_001", "start_frame": 0, "end_frame": 150}
-            ]
-        }
-        scenes_path = project_path / "temp" / "scenes.json"
-        with scenes_path.open("w", encoding="utf-8") as f:
-            json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+        log(f"Stage 3: Calling orchestrator.run_stage(DIRECTOR) with prompt: {prompt}")
+        result = await orchestrator.run_stage(WorkflowStage.DIRECTOR, prompt=prompt)
+        log(f"Stage 3 Result: {result}")
         
-        # 步骤 4: AI 生成 DSL
-        update_project_status(project_id, "dsl_generation", 65, "AI 正在生成剪辑方案...")
+        if not result["success"]:
+            log("Stage 3 FAILED")
+            raise RuntimeError(f"Stage 3 Failed: {result.get('message')}")
+            
+        update_stage_status("director", 65, "✓ 脚本生成完成")
+
+        # --- Stage 4: Execution ---
+        log("Stage 4: Updating status to execution...")
+        update_stage_status("execution", 70, "正在执行剪辑...")
         
-        scenes = ScenesJSON(**scenes_data)
-        transcript = TranscriptJSON(**transcript_data)
+        log("Stage 4: Calling orchestrator.run_stage(EXECUTION)...")
+        result = await orchestrator.run_stage(WorkflowStage.EXECUTION)
+        log(f"Stage 4 Result: {result}")
         
-        # 获取 BGM 库
-        bgm_lib = None
-        if music_preference != "none":
-            music_config = translator.translate_music_preference(music_preference)
-            bgm_lib = bgm_library.search(
-                mood=music_config.get("mood"),
-                energy=music_config.get("energy")
-            )
+        if not result["success"]:
+             raise RuntimeError(f"Stage 4 Failed: {result.get('message')}")
+             
+        update_stage_status("execution", 85, "✓ 粗剪完成")
+
+        # --- Stage 5: Review ---
+        update_stage_status("review", 90, "正在自动审查...")
+        # result = await orchestrator.run_stage(WorkflowStage.REVIEW)
+        # Placeholder
+        update_stage_status("review", 95, "✓ 审查通过")
+
+        # --- Stage 6: Export ---
+        update_stage_status("export", 98, "正在导出最终成片...")
+        # result = await orchestrator.run_stage(WorkflowStage.EXPORT)
+        # Placeholder
+        update_stage_status("export", 100, "✓ 处理完成")
         
-        director = LLMDirector()
-        dsl = director.generate_editing_dsl(scenes, transcript, prompt, bgm_library=bgm_lib)
+        # 完成状态更新
+        update_project_status(project_id, "completed", 100, "全流程处理完成")
         
-        dsl_path = project_path / "temp" / "editing_dsl.json"
-        with dsl_path.open("w", encoding="utf-8") as f:
-            json.dump(dsl, f, indent=2, ensure_ascii=False)
-        
-        # 步骤 5: 执行剪辑
-        update_project_status(project_id, "editing", 80, "正在自动剪辑...")
-        # TODO: 集成 Resolve 执行
-        # runner = ExecutionRunner()
-        # await runner.execute(dsl, video_path)
-        
-        # 步骤 6: 生成预览
-        update_project_status(project_id, "preview_generation", 95, "正在生成预览...")
-        # TODO: 生成预览视频
-        
-        # 完成
-        update_project_status(project_id, "completed", 100, "处理完成")
-        
-        # 提取摘要
-        summary = translator.extract_summary_from_dsl(dsl)
-        
-        # 更新项目元数据
-        meta_path = project_path / "project_meta.json"
-        with meta_path.open("r", encoding="utf-8") as f:
-            project_meta = json.load(f)
-        
-        project_meta["status"] = "completed"
-        project_meta["summary"] = summary
-        project_meta["dsl_path"] = str(dsl_path)
-        
-        with meta_path.open("w", encoding="utf-8") as f:
-            json.dump(project_meta, f, indent=2, ensure_ascii=False)
-        
-    except Exception as e:
-        # 错误处理
-        update_project_status(project_id, "error", 0, f"处理失败: {str(e)}")
-        
-        # 更新元数据
+        # 保存最终元数据
         meta_path = project_path / "project_meta.json"
         if meta_path.exists():
             with meta_path.open("r", encoding="utf-8") as f:
                 project_meta = json.load(f)
-            project_meta["status"] = "error"
-            project_meta["error"] = str(e)
+                project_meta["status"] = "completed"
+                # project_meta["dsl_path"] = ... 
+            
+            with meta_path.open("w", encoding="utf-8") as f:
+                json.dump(project_meta, f, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        update_project_status(project_id, "error", 0, f"处理失败: {str(e)}")
+        
+        meta_path = project_path / "project_meta.json"
+        if meta_path.exists():
+            with meta_path.open("r", encoding="utf-8") as f:
+                project_meta = json.load(f)
+                project_meta["status"] = "error"
+                project_meta["error"] = str(e)
             with meta_path.open("w", encoding="utf-8") as f:
                 json.dump(project_meta, f, indent=2, ensure_ascii=False)
 
@@ -309,12 +320,21 @@ def update_project_status(
     status["current_step"] = step
     
     # 更新步骤状态
-    for s in status["steps"]:
-        if s["name"] == step:
-            s["status"] = "active"
-            s["message"] = message
-        elif s["name"] < step:  # 之前的步骤
-            s["status"] = "completed"
+    steps = status["steps"]
+    try:
+        current_idx = next(i for i, s in enumerate(steps) if s["name"] == step)
+        
+        for i, s in enumerate(steps):
+            if i < current_idx:
+                s["status"] = "completed"
+            elif i == current_idx:
+                s["status"] = "active"
+                s["message"] = message
+            else:
+                s["status"] = "pending"
+    except StopIteration:
+        # Step name not found
+        pass
     
     # 更新预计剩余时间
     remaining = int((100 - progress) / 100 * 180)

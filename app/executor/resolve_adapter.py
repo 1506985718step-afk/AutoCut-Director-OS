@@ -1,12 +1,17 @@
-"""DaVinci Resolve Scripting API 封装（最小骨架）"""
+"""DaVinci Resolve Scripting API 封装（增强版 - 带智能重试）"""
 import os
 import sys
+import time
 from typing import Dict, Any, List, Optional, Tuple
 
 
-def connect_resolve():
+def connect_resolve(retry_interval: int = 2, timeout: int = 60):
     """
-    连接到 DaVinci Resolve 的最小骨架
+    连接到 DaVinci Resolve（带智能重试机制）
+    
+    Args:
+        retry_interval: 重试间隔（秒）
+        timeout: 总超时时间（秒）
     
     Returns:
         tuple: (resolve, project)
@@ -19,50 +24,88 @@ def connect_resolve():
     if script_dir and script_dir not in sys.path:
         sys.path.append(script_dir)
     
-    # 导入 DaVinci Resolve 脚本模块
-    import DaVinciResolveScript as dvr_script  # noqa
+    try:
+        import DaVinciResolveScript as dvr_script  # noqa
+    except ImportError:
+        raise RuntimeError(
+            "无法导入 DaVinciResolveScript 模块。\n"
+            "请检查环境变量 RESOLVE_SCRIPT_DIR 是否正确设置。\n"
+            "运行: python scripts/set_resolve_env_auto.ps1"
+        )
     
-    # 连接到 Resolve
-    resolve = dvr_script.scriptapp("Resolve")
+    print(f"🔌 正在尝试连接 DaVinci Resolve API (超时: {timeout}s)...")
+    start_time = time.time()
+    resolve = None
+    
+    # --- 阶段 1: 等待 API 响应（带重试） ---
+    while time.time() - start_time < timeout:
+        try:
+            # 尝试连接
+            resolve = dvr_script.scriptapp("Resolve")
+            if resolve:
+                print("✓ API 连接成功！")
+                break
+        except Exception:
+            pass
+        
+        # 打印进度
+        elapsed = int(time.time() - start_time)
+        print(f"   ⏳ 等待 Resolve 启动中... ({elapsed}s)", end="\r")
+        time.sleep(retry_interval)
+    
+    print("")  # 换行
+    
     if not resolve:
-        raise RuntimeError("Cannot connect to DaVinci Resolve. Is Resolve running?")
+        raise RuntimeError(
+            "无法连接到 DaVinci Resolve API。\n"
+            "可能原因：\n"
+            "1. Resolve 软件未启动或正在启动画面卡住\n"
+            "2. 软件未开启 '外部脚本使用' 权限\n"
+            "   (偏好设置 -> 系统 -> 常规 -> 外部脚本使用)\n"
+            "3. 启动超时（需要更长时间）\n"
+            f"4. 已等待 {timeout}s 仍无响应"
+        )
     
-    # 获取项目管理器
-    pm = resolve.GetProjectManager()
+    # --- 阶段 2: 获取/创建项目 ---
+    project_manager = resolve.GetProjectManager()
+    project = project_manager.GetCurrentProject()
     
-    # 获取当前项目
-    proj = pm.GetCurrentProject()
-    
-    # 如果没有打开的项目，尝试创建一个
-    if not proj:
-        print("⚠️ 没有打开的项目，尝试自动创建...")
+    # 如果没有打开的项目（通常刚启动时会卡在项目管理器界面）
+    if not project:
+        print("📂 Resolve 位于项目管理器界面，正在创建新项目...")
         
         from datetime import datetime
         project_name = f"AutoCut_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 创建新项目
-        proj = pm.CreateProject(project_name)
-        
-        if not proj:
-            # 如果创建失败，尝试加载现有项目
-            print("创建失败，尝试加载现有项目...")
-            projects = pm.GetProjectListInCurrentFolder()
+        try:
+            # 创建并自动加载项目
+            project = project_manager.CreateProject(project_name)
             
-            if projects and len(projects) > 0:
-                # 加载第一个项目
-                pm.LoadProject(projects[0])
-                proj = pm.GetCurrentProject()
+            if not project:
+                # 创建失败，可能是重名，尝试加载现有项目
+                print("⚠️ 创建失败，尝试加载列表中的第一个项目...")
+                projects = project_manager.GetProjectListInCurrentFolder()
                 
-                if proj:
-                    print(f"✓ 已加载项目: {proj.GetName()}")
-            
-        else:
-            print(f"✓ 已创建新项目: {project_name}")
+                if projects:
+                    project_manager.LoadProject(projects[0])
+                    project = project_manager.GetCurrentProject()
+                    
+                    if project:
+                        print(f"✓ 已加载项目: {project.GetName()}")
+            else:
+                print(f"✓ 已创建新项目: {project_name}")
+                
+        except Exception as e:
+            print(f"❌ 创建项目时发生错误: {e}")
     
-    if not proj:
-        raise RuntimeError("无法创建或加载项目。请在 DaVinci Resolve 中手动创建一个项目。")
+    if not project:
+        raise RuntimeError(
+            "无法创建或加载项目。\n"
+            "请手动在 DaVinci Resolve 中双击打开一个项目，然后重试。"
+        )
     
-    return resolve, proj
+    print(f"🎬 当前项目: {project.GetName()}")
+    return resolve, project
 
 
 class ResolveAdapter:
